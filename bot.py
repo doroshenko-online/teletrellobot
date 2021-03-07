@@ -158,7 +158,10 @@ async def setup_new_list_step_1(msg: types.Message, state: FSMContext):
     message = f"🟢 Создан новый список с названием '{msg.text}'"
     list_id = BOARD.add_list(msg.text)
     await state.update_data(list_id=str(list_id.id))
-    insert_dashboard_lists([[list_id, msg.text]])
+    sql = "INSERT INTO tr_dashboard_lists (list_id, name) VALUES (%s, %s)"
+    val = (str(list_id), msg.text)
+    cursor.execute(sql, val)
+    conn.commit()
     await msg.answer(message)
     keyboard = types.ReplyKeyboardMarkup(one_time_keyboard=True)
     keyboard.add('Да')
