@@ -8,12 +8,19 @@ from sys import platform
 
 BASE_PATH = ''
 
-if platform == "linux" or platform == "linux2":
-    BASE_PATH = os.getcwd() + '/' + sys.argv[0].replace('bot.py', '')
-elif platform == "darwin":
-    BASE_PATH = os.getcwd() + '/' + sys.argv[0].replace('bot.py', '')
-elif platform == "win32":
-    BASE_PATH = os.getcwd() + '\\' + sys.argv[0].replace('bot.py', '')
+
+if os.getcwd() == sys.argv[0].replace('bot.py', '')[0:-1]:
+    BASE_PATH = sys.argv[0].replace('bot.py', '')
+else:
+    if platform == "linux" or platform == "linux2":
+        if sys.argv[0] == 'bot.py':
+            BASE_PATH = os.getcwd() + '/'
+        else:
+            BASE_PATH = sys.argv[0].replace('bot.py', '')
+    elif platform == "darwin":
+        BASE_PATH = os.getcwd() + '/' + sys.argv[0].replace('bot.py', '')
+    elif platform == "win32":
+        BASE_PATH = os.getcwd() + '\\' + sys.argv[0].replace('bot.py', '')
 
 CONFIG_FILE = BASE_PATH + 'config.ini'
 config = configparser.ConfigParser()
