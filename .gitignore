@@ -1,5 +1,5 @@
 .vscode/
 .idea/
-config.ini
-teletrello.db
+./config.ini
+./teletrello.db
 __pycache__/

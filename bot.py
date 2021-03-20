@@ -16,6 +16,7 @@ import os
 import uuid
 import __init__
 from datetime import datetime, timedelta
+import asyncio
 
 memory_storage = MemoryStorage()
 bot = Bot(token=TG_TOKEN)
@@ -60,54 +61,67 @@ async def echo_message(msg: types.Message):
     await msg.answer(message, reply_markup=keyboard)
 
 
+async def update():
+    trunc_lists()
+    trunc_labels()
+    lists = []
+    ls_from_tr = BOARD.get_lists(list_filter='open')
+    for lis in ls_from_tr:
+        lists.append([lis.id, lis.name])
+
+    insert_dashboard_lists(lists)
+
+    labels = []
+    lab_from_tr = BOARD.get_labels()
+    for label in lab_from_tr:
+        labels.append([str(label.id), str(label.name), str(label.color)])
+    insert_labels(labels)
+    if __init__.ListIdForTasksFromTG:
+        check_list = get_list(__init__.ListIdForTasksFromTG)
+        if not check_list:
+            config['trello']['listidfortasksfromtg'] = ''
+            with open(CONFIG_FILE, 'w') as conffile:
+                config.write(conffile)
+            config.read(CONFIG_FILE)
+            __init__.ListIdForTasksFromTG = config['trello']['listidfortasksfromtg']
+            for chat in TG_WORKERS_CHAT_ID:
+                await bot.send_message(chat_id=chat,
+                                       text="❗❗ Список по-умолчанию был удален из трелло! Необходимо снова "
+                                            "выбрать список "
+                                            "по-умолчанию в '⚙ Настройки' ❗❗")
+
+    if __init__.ImportantLabelId:
+        check_label = get_label(__init__.ImportantLabelId)
+        if not check_label:
+            config['trello']['importantlabelid'] = ''
+            with open(CONFIG_FILE, 'w') as conffile:
+                config.write(conffile)
+            config.read(CONFIG_FILE)
+            __init__.ImportantLabelId = config['trello']['importantlabelid']
+            for chat in TG_WORKERS_CHAT_ID:
+                await bot.send_message(chat_id=chat, text="❗❗ Метка для важных задач была удалена из трелло! "
+                                                          "Необходимо снова выбрать метку в "
+                                                          "'⚙ Настройки' ❗❗")
+    tasks = get_tasks()
+    for task in tasks:
+        task_tr = client.get_card(str(task[0]))
+        if task_tr.closed:
+            delete_task(task[0])
+            continue
+        if str(task_tr.list_id) != task[1]:
+            task_change_list(task[0], task_tr.list_id)
+
+
+async def update_auto():
+    while True:
+        await update()
+        await asyncio.sleep(300)
+
+
 @dp.message_handler(commands=['update'], state='*')
-async def update(msg: types.Message):
+async def update_manual(msg: types.Message):
     if str(msg.from_user.id) in TG_WORKERS_CHAT_ID:
-        trunc_lists()
-        trunc_labels()
-        lists = []
-        ls_from_tr = BOARD.get_lists(list_filter='open')
-        for lis in ls_from_tr:
-            lists.append([lis.id, lis.name])
-
-        insert_dashboard_lists(lists)
-
-        labels = []
-        lab_from_tr = BOARD.get_labels()
-        for label in lab_from_tr:
-            labels.append([str(label.id), str(label.name), str(label.color)])
-        insert_labels(labels)
-        if __init__.ListIdForTasksFromTG:
-            check_list = get_list(__init__.ListIdForTasksFromTG)
-            if not check_list:
-                config['trello']['listidfortasksfromtg'] = ''
-                with open(CONFIG_FILE, 'w') as conffile:
-                    config.write(conffile)
-                config.read(CONFIG_FILE)
-                __init__.ListIdForTasksFromTG = config['trello']['listidfortasksfromtg']
-                await msg.answer("❗❗ Список по-умолчанию был удален из трелло! Необходимо снова выбрать список "
-                                 "по-умолчанию в '⚙ Настройки' ❗❗")
-
-        if __init__.ImportantLabelId:
-            check_label = get_label(__init__.ImportantLabelId)
-            if not check_label:
-                config['trello']['importantlabelid'] = ''
-                with open(CONFIG_FILE, 'w') as conffile:
-                    config.write(conffile)
-                config.read(CONFIG_FILE)
-                __init__.ImportantLabelId = config['trello']['importantlabelid']
-                await msg.answer("❗❗ Метка для важных задач была удалена из трелло! Необходимо снова выбрать метку в "
-                                 "'⚙ Настройки' ❗❗")
-
-        tasks = get_tasks()
-        for task in tasks:
-            task_tr = client.get_card(str(task[0]))
-            if task_tr.closed:
-                delete_task(task[0])
-                continue
-            if str(task_tr.list_id) != task[1]:
-                task_change_list(task[0], task_tr.list_id)
-
+        await update()
         await msg.answer("Данные списков, меток и задач обновлены")
         message, keyboard = main_keyboard_admin()
     else:
@@ -160,9 +174,7 @@ async def setup_new_list_step_1(msg: types.Message, state: FSMContext):
     await state.update_data(list_id=str(list_id.id))
     insert_dashboard_lists([[list_id, msg.text]])
     await msg.answer(message)
-    keyboard = types.ReplyKeyboardMarkup(one_time_keyboard=True)
-    keyboard.add('Да')
-    keyboard.add('Нет')
+    keyboard = yes_no_keyboard()
     message = "Установить этот список как список для задач из бота по-умолчанию?"
     await msg.answer(message, reply_markup=keyboard)
     await Setup_list.next()
@@ -199,9 +211,7 @@ async def quick_task_step_1(msg: types.Message, state: FSMContext):
     await state.update_data(task_name=msg.text)
     message = "Установить эту задачу как срочную?\nотправьте команду /cancel или нажмите кнопку 'Отмена' чтобы " \
               "отменить создание задачи"
-    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
-    keyboard.add('Да')
-    keyboard.add('Нет')
+    keyboard = yes_no_cancel_keyboard(True)
     await QuickTask.next()
     await msg.answer(message, reply_markup=keyboard)
 
@@ -245,7 +255,7 @@ async def quick_task_step_2(msg: types.Message, state: FSMContext):
                                      f"✅ Пришла новая Quick задача! - {card.shortUrl}\n💥 От кого: @{str(msg.from_user.username)}\n💥 Название:{task_name}\n💥 Список: {board_list.name}\n💥 Важность: {msg_important}")
     mesg_workers.append(mes.message_id)
 
-    insert_task(id=str(card.id), list_id=str(card.list_id), name=task_name, user_id=str(msg.from_user.id),
+    insert_task(task_id=str(card.id), list_id=str(card.list_id), name=task_name, user_id=str(msg.from_user.id),
                 username=str(msg.from_user.username), message_creator_id=mesg.message_id,
                 short_link=str(card.shortUrl))
 
@@ -384,12 +394,12 @@ async def task_step_7(msg: types.Message, state: FSMContext):
         board_list = BOARD.get_list(list_id)
         if not __init__.ImportantLabelId or user_data['task_label'] == False:
             card = board_list.add_card(name=task_name,
-                                     desc=user_data['task_desc'])
+                                       desc=user_data['task_desc'])
         else:
             label = client.get_label(__init__.ImportantLabelId, TR_BOARD_ID)
             card = board_list.add_card(name=task_name,
-                                     desc=user_data['task_desc'],
-                                     labels=[label])
+                                       desc=user_data['task_desc'],
+                                       labels=[label])
         if user_data['files_dir_id'] != '':
             photo_dir = BASE_PATH + 'files/' + str(msg.from_user.id) + '/' + user_data['files_dir_id'] + "/photo"
             document_dir = BASE_PATH + 'files/' + str(msg.from_user.id) + '/' + user_data['files_dir_id'] + "/document"
@@ -403,7 +413,8 @@ async def task_step_7(msg: types.Message, state: FSMContext):
             if os.path.exists(document_dir):
                 list_of_documents = os.listdir(document_dir)
                 for file in list_of_documents:
-                    card.attach(name=file, file=open(document_dir + "/" + file, mode='rb'), mimeType=user_data['docs'][file])
+                    card.attach(name=file, file=open(document_dir + "/" + file, mode='rb'),
+                                mimeType=user_data['docs'][file])
 
         mesg_workers = []
         if str(msg.from_user.id) in TG_WORKERS_CHAT_ID:
@@ -465,8 +476,9 @@ async def task_step_7(msg: types.Message, state: FSMContext):
                 for doc in list_of_documents:
                     await bot.send_document(msg.from_user.id, document=types.InputFile(document_dir + "/" + doc))
 
-        insert_task(id=str(card.id), list_id=str(card.list_id), name=task_name, user_id=str(msg.from_user.id),
-                    username=str(msg.from_user.username), message_creator_id=mesg.message_id, files_uid=user_data['files_dir_id'], short_link=str(card.shortUrl))
+        insert_task(task_id=str(card.id), list_id=str(card.list_id), name=task_name, user_id=str(msg.from_user.id),
+                    username=str(msg.from_user.username), message_creator_id=mesg.message_id,
+                    files_uid=user_data['files_dir_id'], short_link=str(card.shortUrl))
 
         if str(msg.from_user.id) in TG_WORKERS_CHAT_ID:
             message, keyboard = main_keyboard_admin()
@@ -503,7 +515,8 @@ async def process_task_set_time(callback_query: types.CallbackQuery, state: FSMC
     chat_id = str(callback_query.from_user.id)
     task_name = f"[{username}] " + user_data['task_name']
     photo_dir = BASE_PATH + 'files/' + str(callback_query.from_user.id) + '/' + user_data['files_dir_id'] + "/photo"
-    document_dir = BASE_PATH + 'files/' + str(callback_query.from_user.id) + '/' + user_data['files_dir_id'] + "/document"
+    document_dir = BASE_PATH + 'files/' + str(callback_query.from_user.id) + '/' + user_data[
+        'files_dir_id'] + "/document"
     list_of_photos = []
     list_of_documents = []
     if user_data['task_label']:
@@ -548,10 +561,13 @@ async def process_task_set_time(callback_query: types.CallbackQuery, state: FSMC
 
     mesg_workers = []
     if str(callback_query.from_user.id) in TG_WORKERS_CHAT_ID:
-        mesg = await bot.send_message(chat_id, f"✅ Задача создана! - {card.shortUrl}\n💥 От кого: @{str(callback_query.from_user.username)}\n💥 Название:{task_name}\n💥 Список: {board_list.name}\n💥 Описание:\n{user_data['task_desc']}\n💥 Дедлайн: {user_data['deadline_date']} {int(selected_hour) + 2}:00:00\n💥 Важность: {msg_important}", reply_markup=types.ReplyKeyboardRemove())
+        mesg = await bot.send_message(chat_id,
+                                      f"✅ Задача создана! - {card.shortUrl}\n💥 От кого: @{str(callback_query.from_user.username)}\n💥 Название:{task_name}\n💥 Список: {board_list.name}\n💥 Описание:\n{user_data['task_desc']}\n💥 Дедлайн: {user_data['deadline_date']} {int(selected_hour) + 2}:00:00\n💥 Важность: {msg_important}",
+                                      reply_markup=types.ReplyKeyboardRemove())
         for chat in TG_WORKERS_CHAT_ID:
             if chat != str(callback_query.from_user.id):
-                mes = await bot.send_message(chat, f"✅ Пришла новая задача! - {card.shortUrl}\n💥 От кого: @{str(callback_query.from_user.username)}\n💥 Название:{task_name}\n💥 Список: {board_list.name}\n💥 Описание:\n{user_data['task_desc']}\n💥 Дедлайн: {user_data['deadline_date']} {int(selected_hour) + 2}:00:00\n💥 Важность: {msg_important}")
+                mes = await bot.send_message(chat,
+                                             f"✅ Пришла новая задача! - {card.shortUrl}\n💥 От кого: @{str(callback_query.from_user.username)}\n💥 Название:{task_name}\n💥 Список: {board_list.name}\n💥 Описание:\n{user_data['task_desc']}\n💥 Дедлайн: {user_data['deadline_date']} {int(selected_hour) + 2}:00:00\n💥 Важность: {msg_important}")
                 mesg_workers.append(mes.message_id)
 
                 if user_data['files_dir_id'] == '':
@@ -569,10 +585,12 @@ async def process_task_set_time(callback_query: types.CallbackQuery, state: FSMC
                             await bot.send_document(chat, document=types.InputFile(document_dir + "/" + doc))
 
     else:
-        mesg = await bot.send_message(chat_id, f"✅ Задача создана!\n💥 От кого: @{str(callback_query.from_user.username)}\n💥 Название:{task_name}\n💥 Описание:\n{user_data['task_desc']}\n💥 Дедлайн: {user_data['deadline_date']} {int(selected_hour) + 2}:00:00\n💥 Важность: {msg_important}",
+        mesg = await bot.send_message(chat_id,
+                                      f"✅ Задача создана!\n💥 От кого: @{str(callback_query.from_user.username)}\n💥 Название:{task_name}\n💥 Описание:\n{user_data['task_desc']}\n💥 Дедлайн: {user_data['deadline_date']} {int(selected_hour) + 2}:00:00\n💥 Важность: {msg_important}",
                                       reply_markup=types.ReplyKeyboardRemove())
         for chat in TG_WORKERS_CHAT_ID:
-            mes = await bot.send_message(chat, f"✅ Пришла новая задача! - {card.shortUrl}\n💥 От кого: @{str(callback_query.from_user.username)}\n💥 Название:{task_name}\n💥 Список: {board_list.name}\n💥 Описание:\n{user_data['task_desc']}\n💥 Дедлайн: {user_data['deadline_date']} {int(selected_hour) + 2}:00:00\n💥 Важность: {msg_important}")
+            mes = await bot.send_message(chat,
+                                         f"✅ Пришла новая задача! - {card.shortUrl}\n💥 От кого: @{str(callback_query.from_user.username)}\n💥 Название:{task_name}\n💥 Список: {board_list.name}\n💥 Описание:\n{user_data['task_desc']}\n💥 Дедлайн: {user_data['deadline_date']} {int(selected_hour) + 2}:00:00\n💥 Важность: {msg_important}")
             mesg_workers.append(mes.message_id)
 
             if user_data['files_dir_id'] == '':
@@ -587,7 +605,7 @@ async def process_task_set_time(callback_query: types.CallbackQuery, state: FSMC
 
                 if list_of_documents:
                     for doc in list_of_documents:
-                        await bot.send_document(chat,  document=types.InputFile(document_dir + "/" + doc))
+                        await bot.send_document(chat, document=types.InputFile(document_dir + "/" + doc))
     if user_data['files_dir_id'] == '':
         pass
     else:
@@ -602,7 +620,7 @@ async def process_task_set_time(callback_query: types.CallbackQuery, state: FSMC
             for doc in list_of_documents:
                 await bot.send_document(callback_query.from_user.id, document=types.InputFile(document_dir + "/" + doc))
 
-    insert_task(id=str(card.id), list_id=str(card.list_id), name=task_name, user_id=chat_id,
+    insert_task(task_id=str(card.id), list_id=str(card.list_id), name=task_name, user_id=chat_id,
                 username=username, message_creator_id=mesg.message_id, files_uid=user_data['files_dir_id'],
                 short_link=str(card.shortUrl))
 
@@ -657,7 +675,6 @@ async def select_action(msg: types.Message, state: FSMContext):
                 await msg.answer(message)
             else:
                 for task in tasks:
-                    keyboard = types.InlineKeyboardMarkup(row_width=2)
                     task_tr = client.get_card(task[0])
                     list_tr = BOARD.get_list(task[1])
                     if task_tr.due:
@@ -670,22 +687,7 @@ async def select_action(msg: types.Message, state: FSMContext):
                     if task[6]:
                         uid = task[6]
                         message += "\n 🔥 Вложения:"
-                    kb_close = types.InlineKeyboardButton("✖ Закрыть",
-                                                          callback_data=f"task_action:close|task_id:{task[0]}")
-                    keyboard.insert(kb_close)
-                    kb_edit = types.InlineKeyboardButton("® Редактировать",
-                                                         callback_data=f"task_action:edit|task_id:{task[0]}")
-                    keyboard.insert(kb_edit)
-                    kb_show_comments = types.InlineKeyboardButton("👁‍🗨 Комментарии",
-                                                                  callback_data=f"task_action:show_comments|task_id:{task[0]}")
-
-                    kb_add_comment = types.InlineKeyboardButton("➕ Добавить комментарий",
-                                                                callback_data=f"task_action:add_comment|task_id:{task[0]}")
-                    kb_replace = types.InlineKeyboardButton("🔛 Поместить в другой список",
-                                                            callback_data=f"task_action:move|task_id:{task[0]}")
-                    keyboard.insert(kb_show_comments)
-                    keyboard.insert(kb_add_comment)
-                    keyboard.insert(kb_replace)
+                    keyboard = task_inline_keyboard(task[0], admin=True)
                     if task[6]:
                         mesg = await msg.answer(message)
                         mesg = mesg.message_id
@@ -701,7 +703,8 @@ async def select_action(msg: types.Message, state: FSMContext):
                         if os.path.exists(fdir + "document"):
                             docs = os.listdir(fdir + "document")
                             for doc in docs:
-                                mesg = await bot.send_document(msg.from_user.id, document=types.InputFile(fdir + "document/" + doc))
+                                mesg = await bot.send_document(msg.from_user.id,
+                                                               document=types.InputFile(fdir + "document/" + doc))
                                 mesg = mesg.message_id
                         await bot.edit_message_reply_markup(msg.from_user.id, mesg, reply_markup=keyboard)
                     else:
@@ -725,7 +728,8 @@ async def select_action(msg: types.Message, state: FSMContext):
             labels = get_labels()
             if len(labels) > 0:
                 for lb in labels:
-                    keyboard.add(types.InlineKeyboardButton(f"Название: {lb[1]} | Цвет: {lb[2]}", callback_data=f"label_id:{lb[0]}"))
+                    keyboard.add(types.InlineKeyboardButton(f"Название: {lb[1]} | Цвет: {lb[2]}",
+                                                            callback_data=f"label_id:{lb[0]}"))
             else:
                 message = "😞 Нет меток в базе данных. Выполните команду /update, если метки имеются на трелло"
                 keyboard = None
@@ -762,7 +766,6 @@ async def select_action(msg: types.Message, state: FSMContext):
                 await msg.answer(message)
             else:
                 for task in tasks:
-                    keyboard = types.InlineKeyboardMarkup(row_width=2)
                     task_tr = client.get_card(task[0])
                     list_tr = BOARD.get_list(task[1])
                     if task_tr.due:
@@ -774,21 +777,7 @@ async def select_action(msg: types.Message, state: FSMContext):
 
                     if task[6]:
                         message += "\n 🔥 Вложения:"
-                    kb_close = types.InlineKeyboardButton("✖ Закрыть",
-                                                          callback_data=f"task_action:close|task_id:{task[0]}")
-                    keyboard.insert(kb_close)
-                    if task[3] == str(msg.from_user.id):
-                        kb_edit = types.InlineKeyboardButton("® Редактировать",
-                                                             callback_data=f"task_action:edit|task_id:{task[0]}")
-                        keyboard.insert(kb_edit)
-                    kb_show_comments = types.InlineKeyboardButton("👁‍🗨 Комментарии",
-                                                                  callback_data=f"task_action:show_comments|task_id:{task[0]}")
-
-                    kb_add_comment = types.InlineKeyboardButton("➕ Добавить комментарий",
-                                                                callback_data=f"task_action:add_comment|task_id:{task[0]}")
-
-                    keyboard.insert(kb_show_comments)
-                    keyboard.insert(kb_add_comment)
+                    keyboard = task_inline_keyboard(task[0])
                     if task[6]:
                         mesg = await msg.answer(message)
                         mesg = mesg.message_id
@@ -816,9 +805,9 @@ async def select_action(msg: types.Message, state: FSMContext):
 
 @dp.callback_query_handler(lambda c: c.data and c.data.startswith('task_action'))
 async def procces_task_action(callback_query: types.CallbackQuery, state: FSMContext):
-    arr = callback_query.data.split('|')
-    action = arr[0].split(':')[1]
-    task_id = arr[1].split(':')[1]
+    arr_action_task = callback_query.data.split('|')
+    action = arr_action_task[0].split(':')[1]
+    task_id = arr_action_task[1].split(':')[1]
     if action == 'edit':
         await TaskEdit.waiting_for_edited.set()
         await state.update_data(task_id=task_id)
@@ -846,14 +835,12 @@ async def procces_task_action(callback_query: types.CallbackQuery, state: FSMCon
         message = '❕❕❕Вы дествительно хотите закрыть задачу?❕❕❕'
         await callback_query.message.answer(message, reply_markup=keyboard)
     if action == 'show_comments':
-        list_of_photos = []
-        list_of_documents = []
         await callback_query.message.reply("📄Комментарии к задаче:📄")
         comments = get_comments(task_id)
         for com in comments:
             message = f"🔥Автор: @{com[5]}\n🔥Комментарий: {com[2]}"
             if com[3]:
-                fdir = BASE_PATH  + f"files/{com[4]}/{com[3]}/"
+                fdir = BASE_PATH + f"files/{com[4]}/{com[3]}/"
                 message += "\nВложения:"
                 await callback_query.message.answer(message)
                 if os.path.exists(fdir + "photo"):
@@ -865,9 +852,31 @@ async def procces_task_action(callback_query: types.CallbackQuery, state: FSMCon
                 if os.path.exists(fdir + "document"):
                     docs = os.listdir(fdir + "document")
                     for doc in docs:
-                        await bot.send_document(callback_query.from_user.id, document=types.InputFile(fdir + "document/" + doc))
+                        await bot.send_document(callback_query.from_user.id,
+                                                document=types.InputFile(fdir + "document/" + doc))
             else:
                 await callback_query.message.answer(message)
+    if action == 'move':
+        keyboard = types.InlineKeyboardMarkup()
+        lists = get_dashboards_lists()
+        for dash_list in lists:
+            keyboard.add(types.InlineKeyboardButton(dash_list[1], callback_data=f"li_id:{dash_list[0]}" \
+                                                                                f"|t_id:{task_id}"))
+
+        await callback_query.message.edit_reply_markup(reply_markup=keyboard)
+
+
+@dp.callback_query_handler(lambda c: c.data and c.data.startswith('li_id'))
+async def move_task(callback_query: types.CallbackQuery):
+    list_task = callback_query.data.split('|')
+    list_id = list_task[0].split(':')[1]
+    task_id = list_task[1].split(':')[1]
+    task_tr = client.get_card(task_id)
+    task_tr.change_list(list_id)
+    await update()
+    await callback_query.message.edit_reply_markup(task_inline_keyboard(task_id, admin=True))
+    moved_list_name = get_list(list_id)[1]
+    await callback_query.message.answer(f"Задача перенесена в список '{moved_list_name}'")
 
 
 @dp.message_handler(state=CloseTask.confirm_close, content_types=types.ContentTypes.TEXT)
@@ -930,7 +939,7 @@ async def procces_add_comment_step_2(msg: types.Message, state: FSMContext):
         user_data = await state.get_data()
         await state.finish()
         task = client.get_card(user_data['task_id'])
-        task.comment(comment_text= f"[{msg.from_user.username}]: " + user_data['comment'])
+        task.comment(comment_text=f"[{msg.from_user.username}]: " + user_data['comment'])
         message = "✅ Комментарий добавлен к задаче"
         await msg.answer(message)
         if str(msg.from_user.id) in TG_WORKERS_CHAT_ID:
@@ -1087,7 +1096,8 @@ async def procces_add_comment_step_3(msg: types.Message, state: FSMContext):
                             await bot.send_document(msg.from_user.id,
                                                     document=types.InputFile(document_dir + "/" + doc))
             message, keyboard = main_keyboard_user()
-        insert_comment(user_data['task_id'], user_data['comment'], msg.from_user.id, msg.from_user.username, files_uid=user_data['uid'])
+        insert_comment(user_data['task_id'], user_data['comment'], msg.from_user.id, msg.from_user.username,
+                       files_uid=user_data['uid'])
         await msg.answer(message, reply_markup=keyboard)
     else:
         message = "Доступны лишь фото и документы"
@@ -1110,5 +1120,7 @@ async def procces_edit_task(msg: types.Message, state: FSMContext):
 
     await msg.answer(message, reply_markup=keyboard)
 
+
 if __name__ == '__main__':
+    asyncio.gather(update_auto())
     executor.start_polling(dp)

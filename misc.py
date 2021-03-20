@@ -2,6 +2,19 @@ from aiogram import types
 import __init__
 
 
+def yes_no_keyboard(resize_keyboard=False):
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=resize_keyboard, one_time_keyboard=True)
+    keyboard.add('Да')
+    keyboard.add('Нет')
+    return keyboard
+
+
+def yes_no_cancel_keyboard(resize_keyboard=False):
+    keyboard = yes_no_keyboard(resize_keyboard)
+    keyboard.add('Отмена')
+    return keyboard
+
+
 def main_keyboard_admin():
     keyboard = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     kb_show_created_tasks = '🔞 Показать задачи'
@@ -46,4 +59,21 @@ def time_keyboard():
         kb = types.InlineKeyboardButton(str(i)+'h', callback_data=f"deadline_hour:{str(i)}")
         keyboard.insert(kb)
 
+    return keyboard
+
+
+def task_inline_keyboard(task_id, admin=False):
+    keyboard = types.InlineKeyboardMarkup(row_width=2)
+    kb_close = types.InlineKeyboardButton("✖ Закрыть",  callback_data=f"task_action:close|task_id:{task_id}")
+    kb_edit = types.InlineKeyboardButton("® Редактировать", callback_data=f"task_action:edit|task_id:{task_id}")
+    kb_show_comments = types.InlineKeyboardButton("👁‍🗨 Комментарии", callback_data=f"task_action:show_comments|task_id:{task_id}")
+    kb_add_comment = types.InlineKeyboardButton("➕ Добавить комментарий", callback_data=f"task_action:add_comment|task_id:{task_id}")
+    kb_replace = types.InlineKeyboardButton("🔛 Поместить в другой список", callback_data=f"task_action:move|task_id:{task_id}")
+
+    keyboard.insert(kb_close)
+    keyboard.insert(kb_edit)
+    keyboard.insert(kb_show_comments)
+    keyboard.insert(kb_add_comment)
+    if admin:
+        keyboard.insert(kb_replace)
     return keyboard

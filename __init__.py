@@ -22,6 +22,7 @@ else:
     elif platform == "win32":
         BASE_PATH = os.getcwd() + '\\' + sys.argv[0].replace('bot.py', '')
 
+
 CONFIG_FILE = BASE_PATH + 'config.ini'
 config = configparser.ConfigParser()
 config.read(CONFIG_FILE)
@@ -30,7 +31,10 @@ ListIdForTasksFromTG = config['trello']['listidfortasksfromtg']
 ImportantLabelId = config['trello']['importantlabelid']
 
 # Чат-ид тех, кто будет выполнять задачи
-TG_WORKERS_CHAT_ID = config['trello-workers']['chat_id'].split(',')
+TG_WORKERS_CHAT_ID = []
+for chat_id in config['trello-workers']['chat_id'].split(','):
+    if chat_id:
+        TG_WORKERS_CHAT_ID.append(chat_id)
 
 # Данные телеграмма
 TG_TOKEN = config['telegram']['token']

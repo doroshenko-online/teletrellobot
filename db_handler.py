@@ -99,7 +99,7 @@ def insert_dashboard_lists(lists_from_trello):
             conn.commit()
 
 
-def insert_task(id, list_id, name, user_id, username, short_link, message_creator_id, files_uid=''):
+def insert_task(task_id, list_id, name, user_id, username, short_link, message_creator_id, files_uid=''):
     if config['db']['db'].strip() == 'sqlite':
         sql = "INSERT INTO tr_tasks (task_id, list_id, task_name, from_user_id, from_user_name, message_creator_id, " \
               "files_uid, short_link) VALUES (?, " \
@@ -108,7 +108,7 @@ def insert_task(id, list_id, name, user_id, username, short_link, message_creato
         sql = "INSERT INTO tr_tasks (task_id, list_id, task_name, from_user_id, from_user_name, message_creator_id, " \
               "files_uid, short_link) VALUES (%s, " \
               "%s, %s, %s, %s, %s, %s, %s)"
-    val = (id, list_id, name, user_id, username, message_creator_id, files_uid, short_link)
+    val = (task_id, list_id, name, user_id, username, message_creator_id, files_uid, short_link)
     cursor.execute(sql, val)
     conn.commit()
 
@@ -144,9 +144,9 @@ def task_change_list(task_id, moved_list_id):
 def delete_task(task_id):
     task = get_task(task_id)
     if task[6]:
-        dir = BASE_PATH + f"files/{task[3]}/{task[6]}"
-        if os.path.exists(dir):
-            shutil.rmtree(dir)
+        directory = BASE_PATH + f"files/{task[3]}/{task[6]}"
+        if os.path.exists(directory):
+            shutil.rmtree(directory)
     if config['db']['db'].strip() == 'sqlite':
         sql = "DELETE FROM tr_tasks WHERE task_id=?"
     else:
@@ -157,9 +157,9 @@ def delete_task(task_id):
     comments = get_comments(task_id)
     for comm in comments:
         if comm[3]:
-            dir = BASE_PATH + f"files/{comm[4]}/{comm[3]}"
-            if os.path.exists(dir):
-                shutil.rmtree(dir)
+            directory = BASE_PATH + f"files/{comm[4]}/{comm[3]}"
+            if os.path.exists(directory):
+                shutil.rmtree(directory)
     delete_comments(task_id)
 
 

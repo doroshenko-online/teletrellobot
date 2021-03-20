@@ -79,6 +79,7 @@ CREATE TABLE `tr_tasks` (
   `files_uid` varchar(100) DEFAULT NULL,
   `short_link` varchar(255) NOT NULL,
   `message_creator_id` int NOT NULL,
+  `workers_messages` varchar(1000) DEFAULT NULL,
   PRIMARY KEY (`task_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf32;
 /*!40101 SET character_set_client = @saved_cs_client */;
