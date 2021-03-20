@@ -253,11 +253,11 @@ async def quick_task_step_2(msg: types.Message, state: FSMContext):
     for chat in TG_WORKERS_CHAT_ID:
         mes = await bot.send_message(chat,
                                      f"✅ Пришла новая Quick задача! - {card.shortUrl}\n💥 От кого: @{str(msg.from_user.username)}\n💥 Название:{task_name}\n💥 Список: {board_list.name}\n💥 Важность: {msg_important}")
-    mesg_workers.append(mes.message_id)
+        mesg_workers.append(f"{chat}:" + str(mes.message_id))
 
     insert_task(task_id=str(card.id), list_id=str(card.list_id), name=task_name, user_id=str(msg.from_user.id),
                 username=str(msg.from_user.username), message_creator_id=mesg.message_id,
-                short_link=str(card.shortUrl))
+                short_link=str(card.shortUrl), workers_messages=mesg_workers)
 
     message, keyboard = main_keyboard_user()
     await msg.answer(message, reply_markup=keyboard)
@@ -425,7 +425,7 @@ async def task_step_7(msg: types.Message, state: FSMContext):
                 if chat != str(msg.from_user.id):
                     mes = await bot.send_message(chat,
                                                  f"✅ Пришла новая задача! - {card.shortUrl}\n💥 От кого: @{str(msg.from_user.username)}\n💥 Название:{task_name}\n💥 Список: {board_list.name}\n💥 Описание:\n{user_data['task_desc']}\n💥 Дедлайн: Нет\n💥 Важность: {msg_important}")
-                    mesg_workers.append(mes.message_id)
+                    mesg_workers.append(f"{chat}:" + str(mes.message_id))
                     if user_data['files_dir_id'] == '':
                         pass
                     else:
@@ -447,7 +447,7 @@ async def task_step_7(msg: types.Message, state: FSMContext):
             for chat in TG_WORKERS_CHAT_ID:
                 mes = await bot.send_message(chat,
                                              f"✅ Пришла новая задача! - {card.shortUrl}\n💥 От кого: @{str(msg.from_user.username)}\n💥 Название:{task_name}\n💥 Список: {board_list.name}\n💥 Описание:\n{user_data['task_desc']}\n💥 Дедлайн: Нет\n💥 Важность: {msg_important}")
-                mesg_workers.append(mes.message_id)
+                mesg_workers.append(f"{chat}:" + str(mes.message_id))
                 if user_data['files_dir_id'] == '':
                     pass
                 else:
@@ -478,7 +478,7 @@ async def task_step_7(msg: types.Message, state: FSMContext):
 
         insert_task(task_id=str(card.id), list_id=str(card.list_id), name=task_name, user_id=str(msg.from_user.id),
                     username=str(msg.from_user.username), message_creator_id=mesg.message_id,
-                    files_uid=user_data['files_dir_id'], short_link=str(card.shortUrl))
+                    files_uid=user_data['files_dir_id'], short_link=str(card.shortUrl), workers_messages=mesg_workers)
 
         if str(msg.from_user.id) in TG_WORKERS_CHAT_ID:
             message, keyboard = main_keyboard_admin()
@@ -884,6 +884,7 @@ async def close_task(msg: types.Message, state: FSMContext):
     if msg.text == 'Да':
         user_data = await state.get_data()
         task_id = user_data['task_id']
+        workers_messages = list(get_workers_messages(task_id))
         task = get_task(task_id)
         if str(msg.from_user.id) in TG_WORKERS_CHAT_ID:
             if str(msg.from_user.id) != task[3]:
@@ -895,11 +896,18 @@ async def close_task(msg: types.Message, state: FSMContext):
                 await bot.send_message(ch, 'Задача закрыта!')
 
         await msg.answer('Задача закрыта!')
+        # delete messages
+        for mesg in workers_messages:
+            mesg_arr = str(mesg).split(':')
+            chat = mesg_arr[0]
+            mess = mesg_arr[1]
+            await bot.delete_message(chat, int(mess))
+        await bot.delete_message(task[3], int(task[8]))
+
         delete_task(task_id)
         task_tr = client.get_card(task_id)
         task_tr.set_closed(closed=True)
         await bot.delete_message(msg.from_user.id, user_data['msg_id'])
-
     await state.finish()
     if str(msg.from_user.id) in TG_WORKERS_CHAT_ID:
         message, keyboard = main_keyboard_admin()

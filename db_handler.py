@@ -87,6 +87,13 @@ def get_task(task_id):
     return result
 
 
+def get_workers_messages(task_id):
+    sql = f"SELECT workers_messages FROM tr_tasks WHERE task_id='{task_id}'"
+    cursor.execute(sql)
+    result = cursor.fetchone()
+    return result
+
+
 def insert_dashboard_lists(lists_from_trello):
     for list_tr in lists_from_trello:
         if not get_list(str(list_tr[0])):
@@ -99,16 +106,17 @@ def insert_dashboard_lists(lists_from_trello):
             conn.commit()
 
 
-def insert_task(task_id, list_id, name, user_id, username, short_link, message_creator_id, files_uid=''):
+def insert_task(task_id, list_id, name, user_id, username, short_link, message_creator_id, workers_messages, files_uid=''):
     if config['db']['db'].strip() == 'sqlite':
         sql = "INSERT INTO tr_tasks (task_id, list_id, task_name, from_user_id, from_user_name, message_creator_id, " \
-              "files_uid, short_link) VALUES (?, " \
-              "?, ?, ?, ?, ?, ?, ?)"
+              "files_uid, short_link, workers_messages) VALUES (?, " \
+              "?, ?, ?, ?, ?, ?, ?, ?)"
     else:
         sql = "INSERT INTO tr_tasks (task_id, list_id, task_name, from_user_id, from_user_name, message_creator_id, " \
-              "files_uid, short_link) VALUES (%s, " \
-              "%s, %s, %s, %s, %s, %s, %s)"
-    val = (task_id, list_id, name, user_id, username, message_creator_id, files_uid, short_link)
+              "files_uid, short_link, workers_messages) VALUES (%s, " \
+              "%s, %s, %s, %s, %s, %s, %s, %s)"
+    messages = ','.join(workers_messages)
+    val = (task_id, list_id, name, user_id, username, message_creator_id, files_uid, short_link, messages,)
     cursor.execute(sql, val)
     conn.commit()
 
@@ -127,9 +135,11 @@ def insert_labels(labels_from_trello):
 
 def insert_comment(task_id, comment, chat_id, username, files_uid=''):
     if config['db']['db'].strip() == 'sqlite':
-        sql = "INSERT INTO tr_comments (task_id, text, files_uid, chat_id, username) VALUES (?, ?, ?, ?, ?)"
+        sql = "INSERT INTO tr_comments (task_id, text, files_uid, chat_id, username) VALUES (?, ?, " \
+              "?, ?, ?) "
     else:
-        sql = "INSERT INTO tr_comments (task_id, text, files_uid, chat_id, username) VALUES (%s, %s, %s, %s, %s)"
+        sql = "INSERT INTO tr_comments (task_id, text, files_uid, chat_id, username) VALUES (%s, " \
+              "%s, %s, %s, %s) "
     val = (task_id, comment, files_uid, str(chat_id), username,)
     cursor.execute(sql, val)
     conn.commit()
